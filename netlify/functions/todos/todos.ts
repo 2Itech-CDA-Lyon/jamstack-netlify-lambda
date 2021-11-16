@@ -49,7 +49,7 @@ export const handler: Handler = async (event, context) => {
       switch (event.httpMethod) {
         // Find all
         case 'GET':
-          result = await todos(db).find().all();
+          result = await todos(db).find().orderByAsc('id').all();
           break;
 
         // Create
