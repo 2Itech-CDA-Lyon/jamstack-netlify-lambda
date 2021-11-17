@@ -51,7 +51,7 @@ export const TodoListContextProvider: FC = ({ children }) => {
     .then(response => response.json());
     
     await mutate(
-      todos.map(todo => todo.id === id ? updatedTodo : todo)
+      todos.map(todo => todo.ref['@ref'].id === id ? updatedTodo : todo)
     );
   }
 
@@ -61,7 +61,7 @@ export const TodoListContextProvider: FC = ({ children }) => {
     });
 
     await mutate(
-      todos.filter(todo => todo.id !== id)
+      todos.filter(todo => todo.ref['@ref'].id !== id)
     );
   }
 

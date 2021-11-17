@@ -1,12 +1,22 @@
-export type Id = number;
+export type Id = string;
+
+interface FaunaRef {
+  '@ref': {
+    id: Id;
+    collection?: FaunaRef;
+  }
+}
 
 export interface Entity {
-  id: Id;
+  ref: FaunaRef;
+  ts: number;
 }
 
 export interface Todo extends Entity {
-  text: string;
-  done: boolean;
+  data: {
+    text: string;
+    done: boolean;
+  }
 }
 
 export interface TodoInput {

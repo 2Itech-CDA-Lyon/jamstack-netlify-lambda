@@ -15,7 +15,7 @@ const DeleteButton: FC<DeleteButtonProps> = ({ todo }) => {
 
   const handleClick = async () => {
     setRequestState(RequestState.Pending);
-    await actions.remove(todo.id);
+    await actions.remove(todo.ref['@ref'].id);
     setRequestState(RequestState.Success);
   }
 

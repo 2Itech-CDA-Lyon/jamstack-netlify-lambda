@@ -4,9 +4,25 @@ import { Handler } from '@netlify/functions'
 import dotenv from 'dotenv';
 import DatabaseSchema, {serializeValue} from '../../../__generated__';
 import Todos from '../../../__generated__/todos';
+import { Todo } from '../../../src/types/api';
+
+// Require the driver
+import faunadb from 'faunadb';
+const fql = faunadb.query;
 
 // Read environment variables from .env file
 dotenv.config();
+
+// Acquire the secret and optional endpoint from environment variables
+const secret = process.env.FAUNA_SECRET;
+
+// Instantiate a client
+const client = new faunadb.Client({
+  secret,
+  domain: 'db.eu.fauna.com',
+  port: 443,
+  scheme: 'https',
+});
 
 const {
   DB_USERNAME,
@@ -30,32 +46,42 @@ class MethodNotAllowedException extends Error {
 }
 
 export const handler: Handler = async (event, context) => {
+
   // Establish connection with database
   const db = createConnectionPool(
     `postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`
   );
 
   // Get todos handler
-  const { todos } = tables<DatabaseSchema>({
-    serializeValue,
-  });
+  // const { todos } = tables<DatabaseSchema>({
+  //   serializeValue,
+  // });
 
   try {
     let match: RegExpMatchArray;
-    let result: Todos[] | Todos;
+    let result: { data: Todo[] | Todo };
     let statusCode = 200;
     // If lambda was called without an ID
     if (event.path.match(/^\/\.netlify\/functions\/[^\/]+$/)) {
       switch (event.httpMethod) {
         // Find all
         case 'GET':
-          result = await todos(db).find().orderByAsc('id').all();
+          result = await client.query<{ data: Todo[] }>(
+            fql.Map(
+              fql.Paginate(
+                fql.Match(fql.Index('all_todos'))
+              ),
+              fql.Lambda('todo_ref', fql.Get(fql.Var('todo_ref')))
+            )
+          );
+
+          // result = await todos(db).find().orderByAsc('id').all();
           break;
 
         // Create
         case 'POST':
-          result = (await todos(db).insert(JSON.parse(event.body)))[0];
-          statusCode = 201;
+          // result = (await todos(db).insert(JSON.parse(event.body)))[0];
+          // statusCode = 201;
           break;
 
         // Method not allowed
@@ -69,32 +95,32 @@ export const handler: Handler = async (event, context) => {
       switch (event.httpMethod) {
         // Find by ID
         case 'GET':
-          result = await todos(db).findOne({ id });
-          console.log(result);
-          if (result === null) {
-            throw new NotFoundException();
-          }
+          // result = await todos(db).findOne({ id });
+          // console.log(result);
+          // if (result === null) {
+          //   throw new NotFoundException();
+          // }
           break;
 
         // Update
         case 'PATCH':
         case 'PUT':
-          result = (await todos(db).update({ id }, JSON.parse(event.body)))[0];
-          if (typeof result === 'undefined') {
-            throw new NotFoundException();
-          }
+          // result = (await todos(db).update({ id }, JSON.parse(event.body)))[0];
+          // if (typeof result === 'undefined') {
+          //   throw new NotFoundException();
+          // }
           break;
 
         // Delete
         case 'DELETE':
-          result = await todos(db).findOne({ id });
-          if (result === null) {
-            throw new NotFoundException();
-          } else {
-            await todos(db).delete({ id });
-            statusCode = 204;
-            result = null;
-          }
+          // result = await todos(db).findOne({ id });
+          // if (result === null) {
+          //   throw new NotFoundException();
+          // } else {
+          //   await todos(db).delete({ id });
+          //   statusCode = 204;
+          //   result = null;
+          // }
           break;
 
         // Method not allowed
@@ -115,7 +141,7 @@ export const handler: Handler = async (event, context) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: result === null ? '' : JSON.stringify(result),
+      body: result === null ? '' : JSON.stringify(result.data),
     }
   }
   catch (error) {

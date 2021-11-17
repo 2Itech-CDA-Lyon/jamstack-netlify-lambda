@@ -14,13 +14,13 @@ const TextEditForm: FC<TextEditFormProps> = ({ todo }) => {
 
   const inputRef = useRef<HTMLInputElement>(null);
   const [isEditing, setIsEditing] = useState(false);
-  const [inputText, setInputText] = useState(todo.text);
+  const [inputText, setInputText] = useState(todo.data.text);
   const [requestState, setRequestState] = useState(RequestState.Idle);
 
   const handleSubmit: FormEventHandler = async (event) => {
     event.preventDefault();
     setRequestState(RequestState.Pending);
-    await actions.update(todo.id, { text: inputText });
+    await actions.update(todo.ref['@ref'].id, { text: inputText });
     setRequestState(RequestState.Success);
     setIsEditing(false);
   }
@@ -90,7 +90,7 @@ const TextEditForm: FC<TextEditFormProps> = ({ todo }) => {
 
   return (
     <div className="flex-grow-1">
-      {todo.text}
+      {todo.data.text}
       {' '}
       <Button
         variant="light"

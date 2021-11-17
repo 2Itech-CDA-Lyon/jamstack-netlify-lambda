@@ -26,7 +26,7 @@ const TodoListPageContent: FC = () => {
           todos.map(
             todo => (
               <TodoListItem
-                key={todo.id}
+                key={todo.ref['@ref'].id}
                 todo={todo}
               />
             )

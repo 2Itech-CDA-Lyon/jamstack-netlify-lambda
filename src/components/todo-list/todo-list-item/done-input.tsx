@@ -11,13 +11,13 @@ const DoneInput: FC<DoneInputProps> = ({ todo }) => {
   const { actions } = useTodoListContext();
 
   const handleCheck: ChangeEventHandler<HTMLInputElement> = (event) => {
-    actions.update(todo.id, { done: event.target.checked });
+    actions.update(todo.ref['@ref'].id, { done: event.target.checked });
   }
 
   return (
     <Form.Check
       type="checkbox"
-      checked={todo.done}
+      checked={todo.data.done}
       onChange={handleCheck}
     />
   );
