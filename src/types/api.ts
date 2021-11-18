@@ -7,17 +7,16 @@ interface FaunaRef {
   }
 }
 
-export interface Entity {
+export interface FaunaEntity<T> {
   ref: FaunaRef;
   ts: number;
+  data: T;
 }
 
-export interface Todo extends Entity {
-  data: {
-    text: string;
-    done: boolean;
-  }
-}
+export type Todo = FaunaEntity<{
+  text: string;
+  done: boolean;
+}>;
 
 export interface TodoInput {
   text: string;

@@ -1,10 +1,6 @@
-import createConnectionPool from '@databases/pg';
-import tables from '@databases/pg-typed';
 import { Handler } from '@netlify/functions'
 import dotenv from 'dotenv';
-import DatabaseSchema, {serializeValue} from '../../../__generated__';
-import Todos from '../../../__generated__/todos';
-import { Todo } from '../../../src/types/api';
+import { Todo, TodoInput } from '../../../src/types/api';
 
 // Require the driver
 import faunadb from 'faunadb';
@@ -24,14 +20,6 @@ const client = new faunadb.Client({
   scheme: 'https',
 });
 
-const {
-  DB_USERNAME,
-  DB_PASSWORD,
-  DB_HOST,
-  DB_PORT,
-  DB_NAME,
-} = process.env;
-
 class NotFoundException extends Error {
 
 }
@@ -45,43 +33,66 @@ class MethodNotAllowedException extends Error {
   }
 }
 
+class BadRequestException extends Error {
+  public reason: string;
+
+  constructor(reason: string) {
+    super();
+    this.reason = reason;
+  }
+}
+
+const validatePayload = (payload: any, partial: boolean = false): TodoInput => {
+  console.log('partial = ', partial);
+  if (
+    (partial === false && (
+      typeof payload.text !== 'string'
+      || typeof payload.done !== 'boolean'
+    ))
+    || (partial === true && (
+      (typeof payload.text !== 'undefined' && typeof payload.text !== 'string')
+      || (typeof payload.done !== 'undefined' && typeof payload.done !== 'boolean')
+    ))
+  ) {
+    throw new BadRequestException('Payload incorrectly formed.');  
+  }
+  return payload;
+}
+
 export const handler: Handler = async (event, context) => {
-
-  // Establish connection with database
-  const db = createConnectionPool(
-    `postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`
-  );
-
-  // Get todos handler
-  // const { todos } = tables<DatabaseSchema>({
-  //   serializeValue,
-  // });
-
   try {
     let match: RegExpMatchArray;
-    let result: { data: Todo[] | Todo };
+    let result: Todo[] | Todo;
     let statusCode = 200;
+    let partial = false;
     // If lambda was called without an ID
     if (event.path.match(/^\/\.netlify\/functions\/[^\/]+$/)) {
       switch (event.httpMethod) {
         // Find all
         case 'GET':
-          result = await client.query<{ data: Todo[] }>(
+          result = (await client.query<{ data: Todo[] }>(
             fql.Map(
               fql.Paginate(
                 fql.Match(fql.Index('all_todos'))
               ),
               fql.Lambda('todo_ref', fql.Get(fql.Var('todo_ref')))
             )
-          );
-
-          // result = await todos(db).find().orderByAsc('id').all();
+          )).data;
           break;
 
         // Create
         case 'POST':
-          // result = (await todos(db).insert(JSON.parse(event.body)))[0];
-          // statusCode = 201;
+          result = await client.query(
+            fql.Create(
+              fql.Collection('Todos'),
+              {
+                data: validatePayload(
+                  JSON.parse(event.body)
+                ),
+              }
+            )
+          )
+          statusCode = 201;
           break;
 
         // Method not allowed
@@ -91,36 +102,77 @@ export const handler: Handler = async (event, context) => {
 
     // If lambda was called with an ID
     } else if (match = event.path.match(/^\/\.netlify\/functions\/[^\/]+\/(\d+)$/)) {
-      const id = Number(match[1]);
+      const id = match[1];
       switch (event.httpMethod) {
         // Find by ID
         case 'GET':
-          // result = await todos(db).findOne({ id });
-          // console.log(result);
-          // if (result === null) {
-          //   throw new NotFoundException();
-          // }
+          try {
+            result = await client.query<Todo>(
+              fql.Get(
+                fql.Ref(
+                  fql.Collection('Todos'),
+                  id
+                )
+              )
+            );
+          }
+          catch (error) {
+            if (error.requestResult.statusCode === 404) {
+              throw new NotFoundException();
+            }
+            throw error;
+          }
           break;
 
         // Update
         case 'PATCH':
+          partial = true;
+
         case 'PUT':
-          // result = (await todos(db).update({ id }, JSON.parse(event.body)))[0];
-          // if (typeof result === 'undefined') {
-          //   throw new NotFoundException();
-          // }
+          try {
+            result = await client.query(
+              fql.Update(
+                fql.Ref(
+                  fql.Collection('Todos'),
+                  id
+                ),
+                {
+                  data: validatePayload(
+                    JSON.parse(event.body),
+                    partial
+                  )
+                }
+              )
+            );
+          }
+          catch (error) {
+            if (error.statusCode === 404) {
+              throw new NotFoundException();
+            }
+            throw error;
+          }
           break;
 
         // Delete
         case 'DELETE':
-          // result = await todos(db).findOne({ id });
-          // if (result === null) {
-          //   throw new NotFoundException();
-          // } else {
-          //   await todos(db).delete({ id });
-          //   statusCode = 204;
-          //   result = null;
-          // }
+          try {
+            await client.query(
+              fql.Delete(
+                fql.Ref(
+                  fql.Collection('Todos'),
+                  id
+                )
+              )  
+            )
+            result = null;
+            statusCode = 204;
+          }
+          catch (error) {
+            if (error.requestResult.statusCode === 404) {
+              throw new NotFoundException();
+            }
+            throw error;
+          }
           break;
 
         // Method not allowed
@@ -132,8 +184,6 @@ export const handler: Handler = async (event, context) => {
     } else {
       throw new NotFoundException();
     }
-    // Terminate connection with database
-    await db.dispose();
     
     // Create HTTP response
     return {
@@ -141,17 +191,26 @@ export const handler: Handler = async (event, context) => {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: result === null ? '' : JSON.stringify(result.data),
+      body: result === null ? '' : JSON.stringify(result),
     }
   }
   catch (error) {
+    if (error instanceof BadRequestException) {
+      return {
+        statusCode: 400,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ error: error.reason })
+      }
+    }
     if (error instanceof NotFoundException) {
       return {
         statusCode: 404,
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ error: 'Resrouce not found.' })
+        body: JSON.stringify({ error: 'Resource not found.' })
       }
     }
     if (error instanceof MethodNotAllowedException) {
