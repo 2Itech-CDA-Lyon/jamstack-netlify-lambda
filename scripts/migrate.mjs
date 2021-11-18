@@ -1,32 +1,35 @@
-import createConnectionPool, { sql } from "@databases/pg";
-import dotenv from 'dotenv';
-
-// Read environment variables from .env file
-dotenv.config();
-
-const {
-  DB_USERNAME,
-  DB_PASSWORD,
-  DB_HOST,
-  DB_PORT,
-  DB_NAME,
-} = process.env;
+import faunadb from 'faunadb';
+import faunaClient from './fauna-client.mjs';
+const fql = faunadb.query;
 
 // This script migrates the database schema to the database server
 const run = async () => {
   // Establish connection with database
   console.info('Connecting to database...');
-  const db = createConnectionPool(
-    `postgres://${DB_USERNAME}:${DB_PASSWORD}@${DB_HOST}:${DB_PORT}/${DB_NAME}`,
+    
+  console.info('Migrating schema...')
+  await faunaClient.query(
+    fql.If(
+      fql.Exists(
+        fql.Collection('Todos')
+      ),
+      null,
+      fql.CreateCollection({ name: 'Todos' })
+    )
   );
 
-  // Send SQL query to database
-  console.info('Migrating schema...')
-  await db.query(sql.file('schema.sql'));
-
-  // Terminate connection with database
-  console.info('Releasing client...')
-  await db.dispose();
+  await faunaClient.query(
+    fql.If(
+      fql.Exists(
+        fql.Index('all_todos')
+      ),
+      null,
+      fql.CreateIndex({
+        name: 'all_todos',
+        source: fql.Collection('Todos')
+      })  
+    )
+  );
 }
 
 // Run main process

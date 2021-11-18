@@ -1,24 +1,10 @@
 import { Handler } from '@netlify/functions'
-import dotenv from 'dotenv';
 import { Todo, TodoInput } from '../../../src/types/api';
 
 // Require the driver
 import faunadb from 'faunadb';
+import faunaClient from '../../../scripts/fauna-client';
 const fql = faunadb.query;
-
-// Read environment variables from .env file
-dotenv.config();
-
-// Acquire the secret and optional endpoint from environment variables
-const secret = process.env.FAUNA_SECRET;
-
-// Instantiate a client
-const client = new faunadb.Client({
-  secret,
-  domain: 'db.eu.fauna.com',
-  port: 443,
-  scheme: 'https',
-});
 
 class NotFoundException extends Error {
 
@@ -70,7 +56,7 @@ export const handler: Handler = async (event, context) => {
       switch (event.httpMethod) {
         // Find all
         case 'GET':
-          result = (await client.query<{ data: Todo[] }>(
+          result = (await faunaClient.query<{ data: Todo[] }>(
             fql.Map(
               fql.Paginate(
                 fql.Match(fql.Index('all_todos'))
@@ -82,7 +68,7 @@ export const handler: Handler = async (event, context) => {
 
         // Create
         case 'POST':
-          result = await client.query(
+          result = await faunaClient.query(
             fql.Create(
               fql.Collection('Todos'),
               {
@@ -107,7 +93,7 @@ export const handler: Handler = async (event, context) => {
         // Find by ID
         case 'GET':
           try {
-            result = await client.query<Todo>(
+            result = await faunaClient.query<Todo>(
               fql.Get(
                 fql.Ref(
                   fql.Collection('Todos'),
@@ -130,7 +116,7 @@ export const handler: Handler = async (event, context) => {
 
         case 'PUT':
           try {
-            result = await client.query(
+            result = await faunaClient.query(
               fql.Update(
                 fql.Ref(
                   fql.Collection('Todos'),
@@ -156,7 +142,7 @@ export const handler: Handler = async (event, context) => {
         // Delete
         case 'DELETE':
           try {
-            await client.query(
+            await faunaClient.query(
               fql.Delete(
                 fql.Ref(
                   fql.Collection('Todos'),
@@ -222,6 +208,7 @@ export const handler: Handler = async (event, context) => {
         body: JSON.stringify({ error: `Method ${error.httpMethod} not allowed.` })
       }
     }
+    console.error(error);
     throw error;
   }
 }
